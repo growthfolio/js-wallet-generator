@@ -1,83 +1,349 @@
+# ₿ JS Wallet Generator - Gerador de Carteiras Bitcoin
 
-# Bitcoin Testnet Wallet Generator
+## 🎯 Objetivo de Aprendizado
+Projeto desenvolvido para estudar **criptografia** e **blockchain**, implementando um gerador de carteiras Bitcoin Testnet usando padrões BIP32, BIP39 e bibliotecas criptográficas JavaScript.
 
-This project is a Bitcoin wallet generator for the Testnet, using BIP32, BIP39, and the `bitcoinjs-lib` library. It creates a hierarchical deterministic (HD) wallet and displays the Bitcoin address, private key, and mnemonic phrase.
+## 🛠️ Tecnologias Utilizadas
+- **Runtime:** Node.js
+- **Criptografia:** bitcoinjs-lib
+- **Padrões:** BIP32 (HD Wallets), BIP39 (Mnemonic)
+- **Rede:** Bitcoin Testnet
+- **Conceitos estudados:**
+  - Criptografia de chave pública/privada
+  - Hierarchical Deterministic (HD) Wallets
+  - Mnemonic seed phrases
+  - Bitcoin address generation
+  - Elliptic Curve Cryptography
+  - Hash functions (SHA256, RIPEMD160)
 
-## Prerequisites
+## 🚀 Demonstração
+```javascript
+const bitcoin = require('bitcoinjs-lib');
+const bip32 = require('bip32');
+const bip39 = require('bip39');
 
-Before you begin, ensure you have the following software installed on your system:
+// Configuração para Bitcoin Testnet
+const network = bitcoin.networks.testnet;
 
-- [Node.js](https://nodejs.org/) (version 12 or higher)
-- [Electrum](https://electrum.org/#download) (to verify the address on the Testnet)
+class WalletGenerator {
+  constructor() {
+    this.network = network;
+  }
 
-### Installing Node.js
+  generateWallet() {
+    // Gerar mnemonic de 12 palavras
+    const mnemonic = bip39.generateMnemonic();
+    
+    // Converter mnemonic para seed
+    const seed = bip39.mnemonicToSeedSync(mnemonic);
+    
+    // Criar root key a partir do seed
+    const root = bip32.fromSeed(seed, this.network);
+    
+    // Derivar chave usando caminho BIP44 para Bitcoin Testnet
+    // m/44'/1'/0'/0/0 (1' = testnet)
+    const path = "m/44'/1'/0'/0/0";
+    const child = root.derivePath(path);
+    
+    // Gerar endereço Bitcoin
+    const { address } = bitcoin.payments.p2pkh({
+      pubkey: child.publicKey,
+      network: this.network
+    });
+    
+    return {
+      address,
+      privateKey: child.toWIF(),
+      publicKey: child.publicKey.toString('hex'),
+      mnemonic,
+      path,
+      network: 'testnet'
+    };
+  }
 
-If you don't have Node.js installed, follow the steps below to install it on Ubuntu:
+  validateMnemonic(mnemonic) {
+    return bip39.validateMnemonic(mnemonic);
+  }
 
-```bash
-sudo apt update
-sudo apt install nodejs npm
+  restoreFromMnemonic(mnemonic, addressIndex = 0) {
+    if (!this.validateMnemonic(mnemonic)) {
+      throw new Error('Invalid mnemonic phrase');
+    }
+
+    const seed = bip39.mnemonicToSeedSync(mnemonic);
+    const root = bip32.fromSeed(seed, this.network);
+    const path = `m/44'/1'/0'/0/${addressIndex}`;
+    const child = root.derivePath(path);
+
+    const { address } = bitcoin.payments.p2pkh({
+      pubkey: child.publicKey,
+      network: this.network
+    });
+
+    return {
+      address,
+      privateKey: child.toWIF(),
+      publicKey: child.publicKey.toString('hex'),
+      path,
+      index: addressIndex
+    };
+  }
+}
+
+// Uso da classe
+const generator = new WalletGenerator();
+const wallet = generator.generateWallet();
+
+console.log('🔐 Nova Carteira Bitcoin Testnet Gerada:');
+console.log('📍 Endereço:', wallet.address);
+console.log('🔑 Chave Privada (WIF):', wallet.privateKey);
+console.log('🔓 Chave Pública:', wallet.publicKey);
+console.log('📝 Mnemonic:', wallet.mnemonic);
+console.log('🛤️  Caminho de Derivação:', wallet.path);
 ```
 
-Verify the installation:
+## 💡 Principais Aprendizados
 
-```bash
-node -v
-npm -v
+### 🔐 Criptografia Bitcoin
+- **Elliptic Curve:** secp256k1 para geração de chaves
+- **Hash Functions:** SHA256, RIPEMD160 para endereços
+- **Base58Check:** Encoding para endereços legíveis
+- **WIF:** Wallet Import Format para chaves privadas
+
+### 🌱 HD Wallets (BIP32)
+- **Hierarchical Deterministic:** Uma seed gera múltiplas chaves
+- **Derivation Paths:** Estrutura padronizada m/44'/1'/0'/0/0
+- **Extended Keys:** xpub/xprv para chaves estendidas
+- **Child Key Derivation:** Geração determinística de chaves filhas
+
+### 📝 Mnemonic Seeds (BIP39)
+- **12/24 palavras:** Representação humana de entropy
+- **Wordlist:** 2048 palavras padronizadas
+- **Checksum:** Validação de integridade
+- **Seed Generation:** Conversão para seed binário
+
+## 🧠 Conceitos Técnicos Estudados
+
+### 1. **Geração de Endereços Bitcoin**
+```javascript
+function generateBitcoinAddress(publicKey, network) {
+  // 1. SHA256 da chave pública
+  const sha256Hash = bitcoin.crypto.sha256(publicKey);
+  
+  // 2. RIPEMD160 do hash SHA256
+  const ripemd160Hash = bitcoin.crypto.ripemd160(sha256Hash);
+  
+  // 3. Adicionar version byte (0x00 para mainnet, 0x6f para testnet)
+  const versionByte = network === bitcoin.networks.testnet ? 0x6f : 0x00;
+  const versionedHash = Buffer.concat([Buffer.from([versionByte]), ripemd160Hash]);
+  
+  // 4. Double SHA256 para checksum
+  const checksum = bitcoin.crypto.sha256(bitcoin.crypto.sha256(versionedHash)).slice(0, 4);
+  
+  // 5. Concatenar e codificar em Base58
+  const addressBytes = Buffer.concat([versionedHash, checksum]);
+  const address = bitcoin.address.toBase58Check(addressBytes);
+  
+  return address;
+}
 ```
 
-## Cloning the Repository
+### 2. **Derivação de Chaves HD**
+```javascript
+class HDWallet {
+  constructor(seed, network) {
+    this.root = bip32.fromSeed(seed, network);
+    this.network = network;
+  }
 
-Clone this repository to your system:
+  // Derivar chave usando caminho BIP44
+  deriveAccount(coinType = 1, account = 0) {
+    // m/44'/coinType'/account'
+    const accountPath = `m/44'/${coinType}'/${account}'`;
+    return this.root.derivePath(accountPath);
+  }
 
-```bash
-git clone https://github.com/your-username/bitcoin-testnet-wallet.git
-cd bitcoin-testnet-wallet
+  // Derivar endereço específico
+  deriveAddress(account, change = 0, addressIndex = 0) {
+    // m/44'/1'/account'/change/addressIndex
+    const fullPath = `m/44'/1'/${account}'/${change}/${addressIndex}`;
+    const child = this.root.derivePath(fullPath);
+    
+    const { address } = bitcoin.payments.p2pkh({
+      pubkey: child.publicKey,
+      network: this.network
+    });
+
+    return {
+      address,
+      privateKey: child.toWIF(),
+      publicKey: child.publicKey.toString('hex'),
+      path: fullPath,
+      index: addressIndex
+    };
+  }
+
+  // Gerar múltiplos endereços
+  generateAddresses(count = 10, account = 0, change = 0) {
+    const addresses = [];
+    
+    for (let i = 0; i < count; i++) {
+      addresses.push(this.deriveAddress(account, change, i));
+    }
+    
+    return addresses;
+  }
+}
 ```
 
-## Installing Dependencies
+### 3. **Validação e Recuperação**
+```javascript
+class WalletValidator {
+  static validateAddress(address, network) {
+    try {
+      bitcoin.address.toOutputScript(address, network);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
 
-Install the project dependencies using npm:
+  static validatePrivateKey(privateKey, network) {
+    try {
+      bitcoin.ECPair.fromWIF(privateKey, network);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
 
-```bash
-npm install bip32 bip39 bitcoinjs-lib
+  static validateMnemonic(mnemonic) {
+    return bip39.validateMnemonic(mnemonic);
+  }
+
+  static getAddressFromPrivateKey(privateKey, network) {
+    const keyPair = bitcoin.ECPair.fromWIF(privateKey, network);
+    const { address } = bitcoin.payments.p2pkh({
+      pubkey: keyPair.publicKey,
+      network
+    });
+    return address;
+  }
+}
 ```
 
-## Running the Project
-
-After installing the dependencies, run the following command to generate a new Bitcoin wallet on the Testnet:
-
-```bash
-node generateWallet.js
+## 📁 Estrutura do Projeto
+```
+js-wallet-generator/
+├── src/
+│   ├── generateWallet.js      # Script principal
+│   ├── WalletGenerator.js     # Classe do gerador
+│   ├── HDWallet.js           # Implementação HD Wallet
+│   └── utils/
+│       ├── crypto.js         # Utilitários criptográficos
+│       └── validator.js      # Validações
+├── examples/                 # Exemplos de uso
+├── tests/                    # Testes unitários
+├── package.json             # Dependências
+└── README.md               # Documentação
 ```
 
-You will see the output in the terminal with the Bitcoin address, private key (in WIF), and mnemonic phrase (seed).
+## 🔧 Como Executar
 
-## Verifying the Address on the Testnet Blockchain
+### Pré-requisitos
+- Node.js 12+
+- npm ou yarn
 
-You can use [Electrum](https://electrum.org/#download) to verify the generated address. If you already have Electrum installed, follow the steps below to configure it in Testnet mode on Ubuntu.
+### Instalação
+```bash
+# Clone o repositório
+git clone <repo-url>
+cd js-wallet-generator
 
-### Starting Electrum in Testnet Mode
+# Instale dependências
+npm install
 
-1. Download and extract Electrum:
+# Execute o gerador
+node src/generateWallet.js
+```
 
-    ```bash
-    tar -xvf Electrum-4.5.5.tar.gz
-    ```
+### Dependências
+```json
+{
+  "dependencies": {
+    "bitcoinjs-lib": "^6.1.0",
+    "bip32": "^4.0.0",
+    "bip39": "^3.1.0"
+  }
+}
+```
 
-2. Start Electrum in Testnet mode:
+## ⚠️ Segurança e Avisos
 
-    ```bash
-    python3 Electrum-4.5.5/run_electrum --testnet
-    ```
+### 🔒 Boas Práticas
+- **Testnet Only:** Use apenas para testes, nunca mainnet
+- **Private Keys:** Nunca compartilhe chaves privadas
+- **Mnemonic Security:** Armazene mnemonics com segurança
+- **Entropy:** Use fontes seguras de randomness
 
-3. Create a new wallet or import the mnemonic phrase generated by your code.
+### 🚨 Avisos Importantes
+```javascript
+// ⚠️ NUNCA faça isso em produção
+console.log('Private Key:', privateKey); // Não logar chaves privadas
 
-### Checking Balance and Transactions
+// ✅ Melhor prática
+const maskedKey = privateKey.slice(0, 4) + '...' + privateKey.slice(-4);
+console.log('Private Key:', maskedKey);
+```
 
-With the wallet loaded in Electrum, you can check the balance and transactions associated with the generated address.
+## 🧪 Verificação com Electrum
 
-## Contribution
+### Configuração Testnet
+```bash
+# Baixar Electrum
+wget https://download.electrum.org/4.5.5/Electrum-4.5.5.tar.gz
+tar -xvf Electrum-4.5.5.tar.gz
 
-Contributions are welcome! If you find any issues or have suggestions for improvements, feel free to open an issue or submit a pull request.
+# Executar em modo Testnet
+python3 Electrum-4.5.5/run_electrum --testnet
 
+# Importar mnemonic gerado
+# File > New/Restore > Standard wallet > I already have a seed
+```
+
+## 🚧 Desafios Enfrentados
+1. **Criptografia:** Entender curvas elípticas e hash functions
+2. **BIP Standards:** Implementar padrões Bitcoin corretamente
+3. **Key Derivation:** Compreender caminhos de derivação HD
+4. **Network Configuration:** Configurar corretamente testnet vs mainnet
+5. **Security:** Implementar práticas seguras de geração
+6. **Validation:** Validar endereços e chaves corretamente
+
+## 📚 Recursos Utilizados
+- [Bitcoin Developer Guide](https://developer.bitcoin.org/)
+- [BIP32 Specification](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
+- [BIP39 Specification](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)
+- [bitcoinjs-lib Documentation](https://github.com/bitcoinjs/bitcoinjs-lib)
+- [Mastering Bitcoin](https://github.com/bitcoinbook/bitcoinbook)
+
+## 📈 Próximos Passos
+- [ ] Implementar suporte para SegWit (P2WPKH)
+- [ ] Adicionar geração de transações
+- [ ] Criar interface web para o gerador
+- [ ] Implementar backup criptografado
+- [ ] Adicionar suporte para múltiplas moedas
+- [ ] Criar testes automatizados
+
+## 🔗 Projetos Relacionados
+- [Solidity CoinLink Token](../solidity-coinlink-token/) - Smart contracts
+- [CryptoTool](../CryptoTool/) - Ferramentas crypto em Go
+- [Go PriceGuard API](../go-priceguard-api/) - API para crypto
+
+---
+
+**Desenvolvido por:** Felipe Macedo  
+**Contato:** contato.dev.macedo@gmail.com  
+**GitHub:** [FelipeMacedo](https://github.com/felipemacedo1)  
+**LinkedIn:** [felipemacedo1](https://linkedin.com/in/felipemacedo1)
+
+> 💡 **Reflexão:** Este projeto aprofundou meu entendimento sobre criptografia e blockchain. Trabalhar com padrões Bitcoin e implementar geração segura de carteiras consolidou conhecimentos fundamentais sobre segurança digital.
